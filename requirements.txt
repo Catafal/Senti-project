@@ -1,0 +1,25 @@
+# this is only for linux/macos
+torch==2.4.1; sys_platform != 'win32'
+torchvision==0.19.1; sys_platform != 'win32'
+# For Windows, install PyTorch manually with (otherwise you won't have cuda support!!):
+# pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu118
+
+setuptools==75.1.0  # only needed for python >= 3.12
+numpy==1.26.3
+matplotlib==3.9.2
+h5py==3.12.1
+pandas==2.2.3
+imageio[ffmpeg]==2.36.0
+scikit-learn==1.5.2
+opencv-python==4.10.0.84
+scipy==1.11.4
+py-feat==0.6.1
+
+ipykernel==6.29.5 # for notebooks
+opencv_jupyter_ui==1.4.2 # Lab 1, for notebooks
+# Lab 3
+furhat_remote_api==1.0.2
+# LLM integration
+google-generativeai==0.7.2
+transformers==4.45.2
+accelerate==0.34.2
