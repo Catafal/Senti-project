@@ -162,7 +162,7 @@ class FurhatEmotionAssistant:
     def handle_assessment_state(self) -> SessionState:
         """
         Simplified assessment state that:
-        1. Detects initial emotion
+        1. Detects initial emotion (cv)
         2. Gets user input
         3. Validates emotional coherence
         4. Transitions if appropriate
@@ -203,7 +203,7 @@ class FurhatEmotionAssistant:
         
         return SessionState.INTERVENTION
 
-    def handle_intervention_state(self) -> SessionState:
+    def handle_intervention_state(self) -> SessionState: 
         """
         Main handler for intervention state. Manages technique selection and guidance.
         """
@@ -673,6 +673,7 @@ class FurhatEmotionAssistant:
 
     def run(self):
         """Main execution function"""
+        print("-" * 40)
         print("Remember to add your API key to the .env file!")
         print("Initializing Furhat assistant...")
         print("-" * 40)
