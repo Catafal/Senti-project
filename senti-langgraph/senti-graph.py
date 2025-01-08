@@ -11,7 +11,6 @@ from typing_extensions import Annotated
 from copy import deepcopy
 from EmotionUtils import EmotionDetector
 import time
-from os.path import abspath
 
 # init furhat
 load_dotenv()
