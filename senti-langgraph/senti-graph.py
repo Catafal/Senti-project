@@ -11,6 +11,7 @@ from typing_extensions import Annotated
 from copy import deepcopy
 from EmotionUtils import EmotionDetector
 import time
+from os.path import abspath
 
 # init furhat
 load_dotenv()
@@ -72,7 +73,7 @@ def turn_off_lights(furhat: Annotated[FurhatRemoteAPI, InjectedToolArg]) -> str:
 @tool(parse_docstring=True)
 def perform_gesture(last_msg: str, emotion: str, furhat: Annotated[FurhatRemoteAPI, InjectedToolArg]) -> str:
     """
-    Performs a gesture based on the emotion sentiment of the user.
+    Performs a gesture if appropriate based on the user's emotion.
 
     Args:
         last_msg: The last thing that the user said.
@@ -94,6 +95,7 @@ def perform_gesture(last_msg: str, emotion: str, furhat: Annotated[FurhatRemoteA
 
 tools = [turn_on_lights, turn_off_lights, perform_gesture]
 llm_with_tools = llm.bind_tools(tools, parallel_tool_calls=True)
+
 # to make sure tool has access to furhat object at runtime
 @chain
 def inject_furhat(ai_msg):
@@ -111,7 +113,7 @@ def tool_router(tool_call):
 
 # Node
 def greeting(state: MessagesState):
-    greeting_msg = "Hi, I'm Furhat an emotional coach, how are you feeling today?"
+    greeting_msg = "Hi, I'm Senti an emotional coach, how are you feeling today?"
     msg = AIMessage(content=greeting_msg)
     furhat.say(text=greeting_msg, blocking=True)
     furhat.gesture(name="BigSmile")
@@ -128,21 +130,25 @@ def get_user_prompt_and_emotion(state: MessagesState):
     if response.success and response.message and detected_emotion:
         usr_msg = HumanMessage(content=response.message + f"\n\nEmotion: {detected_emotion}")
         usr_msg.pretty_print()
-        return {"messages": [usr_msg]}
+        return {"messages": [usr_msg], "emotion": detected_emotion}
     else:
         print("User did not say anything")
         return {"messages": []}
 
 # Node
 def assistant(state: MessagesState):
-    # possible to check for the last message, if not human message -> nothing was said - hard code empathic response to ask if something is wrong
-    if state["messages"][-1].type != "human":
+    # Detect that user is idle
+    last_msg = state["messages"][-1]
+    if last_msg.type != "human" and last_msg.content != "You completed the exercise. Are you feeling better now?":
         furhat.gesture(name="BrowFrown")
         worried_text = "Is everything okay? You didn't say anything."
         furhat.say(text=worried_text, blocking=True)
         worried_ai_msg = AIMessage(content=worried_text)
         worried_ai_msg.pretty_print()
         return {"messages": [worried_ai_msg]}
+
+
+    #TODO: compare emotion and text in this node
 
     # generate response using chain that includes tools
     chain = llm_with_tools | inject_furhat | tool_router.map()
@@ -165,8 +171,8 @@ def begin_music_ex(state: MessagesState):
     begin_msg = "Alright, we'll now begin the music therapy exercise."
     furhat.say(text=begin_msg, blocking=True)
     print("playing music..")
-    furhat.say(url="assets/music.wav", blocking=True)
-    msg = AIMessage(content=begin_msg + "**music plays**")
+    furhat.say(url="https://www2.cs.uic.edu/~i101/SoundFiles/PinkPanther30.wav", blocking=True)
+    msg = AIMessage(content=begin_msg + "\n\n**music plays**")
     furhat.gesture(name="Nod")
     msg.pretty_print()
     return {"messages": [msg]}
@@ -195,7 +201,7 @@ def breathe_and_relax(state: MessagesState):
     exhale_msg.pretty_print()
     return {"messages": [inhale_msg, exhale_msg]}
 
-# Node (breathing exercise)
+# Node (end exercise)
 def end_exercise(state: MessagesState):
     end_msg = "You completed the exercise. Are you feeling better now?"
     furhat.say(text=end_msg, blocking=True)
@@ -203,7 +209,6 @@ def end_exercise(state: MessagesState):
     furhat.gesture(name="BigSmile")
     msg.pretty_print()
     return {"messages": [msg]}
-
 
 # Controller for the control flow - continue, begin exercise, or end conversation
 def controller(state: MessagesState) -> Literal["assistant", "begin_breath_ex", "begin_music_ex", "farewell"]:
@@ -233,7 +238,7 @@ builder.add_edge(START, "greeting")
 builder.add_edge("greeting", "get_user_prompt_and_emotion")
 builder.add_conditional_edges("get_user_prompt_and_emotion", controller)
 builder.add_edge("assistant", "get_user_prompt_and_emotion")
-builder.add_edge("begin_music_ex", "get_user_prompt_and_emotion")
+builder.add_edge("begin_music_ex", "end_exercise")
 builder.add_edge("begin_breath_ex", "breathe_and_relax")
 builder.add_edge("breathe_and_relax", "end_exercise")
 builder.add_edge("end_exercise", "get_user_prompt_and_emotion")
@@ -242,8 +247,8 @@ builder.add_edge("farewell", END)
 # Add
 graph = builder.compile()
 sys_text = """
-You are an empathic assistant who offers emotional advice for the user. You have tools to turn lights on and off, or perform gestures.
-You should decide when it is appropriate to use them. 
+You are an empathic assistant who offers emotional advice for the user. The user's detected emotion is stated at the bottom of his messages.
+You have various exercises that you can perform with the user to improve his/her mood.
 """
 messages = [SystemMessage(content=sys_text)]
 all_msgs = graph.invoke({"messages": messages}, config={"recursion_limit": 100})['messages']
