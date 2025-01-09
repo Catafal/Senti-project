@@ -29,6 +29,12 @@ llm = ChatGroq(model_name="llama-3.3-70b-versatile")
 # init cv_model for emotion detection
 cv_model = EmotionDetector()
 
+def print_state(state_name: str):
+    """Helper function to print current state in a consistent format"""
+    print("\n" + "="*50)
+    print(f"Current State: {state_name}")
+    print("="*50 + "\n")
+
 class GestureResponse(BaseModel):
     """Contains one of the predefined gestures"""
     gesture: str = Field(description="One of the pre-defined gestures")
@@ -115,6 +121,7 @@ def tool_router(tool_call):
 
 # Node
 def greeting(state: MessagesState):
+    print_state("GREETING")
     greeting_msg = "Hi, I'm Senti an emotional coach, how are you feeling today?"
     msg = AIMessage(content=greeting_msg)
     furhat.say(text=greeting_msg, blocking=True)
@@ -124,6 +131,7 @@ def greeting(state: MessagesState):
 
 # Node
 def get_user_prompt_and_emotion(state: MessagesState):
+    print_state("GETTING USER INPUT AND EMOTION")
     print("Listening...")
     response = furhat.listen()
     detected_emotion = cv_model._detect_and_validate_emotion()
@@ -137,9 +145,62 @@ def get_user_prompt_and_emotion(state: MessagesState):
         print("User did not say anything")
         return {"messages": []}
 
+# Part of assistant node
+def compare_emotions(state: MessagesState, last_msg: HumanMessage):
+    try:
+        visual_emotion = last_msg.content.split("Emotion: ")[1].strip()
+        print(f"\nVisual Emotion: {visual_emotion}")
+        
+        user_text = last_msg.content.split("\n\nEmotion:")[0]
+
+        # analyse the emotion from text
+        analysis_prompt = SystemMessage(content="""
+            Analyze the following text and determine the dominant emotion from these options only:
+            anger, disgust, fear, happiness, sadness, surprise, neutral
+            
+            Respond with just the emotion word in lowercase.
+        """)
+
+        text_input = HumanMessage(content=user_text)
+        text_emotion = llm.invoke([analysis_prompt, text_input]).content.strip().lower()
+        
+        # print(f"\nEmotion Analysis:")
+        # print(f"Visual detection: {visual_emotion}")
+        # print(f"Text analysis: {text_emotion}")
+        
+        # if emotions don't match, ask user to clarify
+        if text_emotion != visual_emotion.lower():
+            # if both emotions are positive, treat as match
+            if text_emotion in positive_emotions and visual_emotion.lower() in positive_emotions:
+                print("Both emotions are positive - treating as match")
+                return None
+            
+            # handle mismatch
+            print(f"Emotion mismatch detected - Text: {text_emotion}, Visual: {visual_emotion}")
+            clarification_prompt = SystemMessage(content=f"""
+            I detected {visual_emotion} from your expression, but your words suggest you're feeling {text_emotion}. 
+            Generate a short, empathetic question to better understand how the user is truly feeling.
+            Focus on resolving this discrepancy naturally and conversationally.
+            """)
+            
+            clarification_response = llm.invoke([clarification_prompt]).content
+            furhat.say(text=clarification_response, blocking=True)
+            furhat.gesture(name="BrowRaise")
+            clarification_msg = AIMessage(content=clarification_response)
+            return {"messages": state["messages"] + [clarification_msg]}
+            
+    except Exception as e:
+        print(f"Error in emotion comparison: {e}")
+        return None
+
+    return None  # return None if emotions match
+
+
+
 # Node
 def assistant(state: MessagesState):
-    # Detect that user is idle
+    print_state("ASSISTANT RESPONSE")
+    # 1. check for idle user first
     last_msg = state["messages"][-1]
     if last_msg.type != "human" and last_msg.content != "You completed the exercise. Are you feeling better now?":
         furhat.gesture(name="BrowFrown")
@@ -148,19 +209,23 @@ def assistant(state: MessagesState):
         worried_ai_msg = AIMessage(content=worried_text)
         worried_ai_msg.pretty_print()
         return {"messages": [worried_ai_msg]}
-
-
-    #TODO: compare emotion and text in this node
-
-    # generate response using chain that includes tools
+    
+    # 2. compare emotions before generating response
+    comparison_result = compare_emotions(state, last_msg)
+    if comparison_result:  # if there was a mismatch and we need clarification
+        return comparison_result
+    
+    # 3. generate response using chain that includes tools
     chain = llm_with_tools | inject_furhat | tool_router.map()
     llm_msg = chain.invoke(state["messages"])[0]
     furhat.say(text=llm_msg.content, blocking=True)
     llm_msg.pretty_print()
     return {"messages": [llm_msg]}
 
+
 # Node
 def farewell(state: MessagesState):
+    print_state("FAREWELL")
     goodbye_message = "Goodbye!"
     msg = AIMessage(content=goodbye_message)
     furhat.say(text=goodbye_message, blocking=True)
@@ -170,6 +235,7 @@ def farewell(state: MessagesState):
 
 # Node (music therapy exercise)
 def begin_music_ex(state: MessagesState):
+    print_state("MUSIC THERAPY EXERCISE")
     begin_msg = "Alright, we'll now begin the music therapy exercise."
     furhat.say(text=begin_msg, blocking=True)
     print("playing music..")
@@ -181,6 +247,7 @@ def begin_music_ex(state: MessagesState):
 
 # Node (breathing exercise)
 def begin_breath_ex(state: MessagesState):
+    print_state("BREATHING EXERCISE")
     begin_msg = "Alright, we'll now begin the breathing exercise."
     furhat.say(text=begin_msg, blocking=True)
     msg = AIMessage(content=begin_msg)
@@ -190,6 +257,7 @@ def begin_breath_ex(state: MessagesState):
 
 # Node (breathing exercise)
 def breathe_and_relax(state: MessagesState):
+    print_state("BREATHE AND RELAX")
     inhale_msg = "Breathe in for 5 seconds"
     furhat.say(text=inhale_msg, blocking=True)
     time.sleep(4)
@@ -205,6 +273,7 @@ def breathe_and_relax(state: MessagesState):
 
 # Node (end exercise)
 def end_exercise(state: MessagesState):
+    print_state("END OF EXERCISE")
     end_msg = "You completed the exercise. Are you feeling better now?"
     furhat.say(text=end_msg, blocking=True)
     msg = AIMessage(content=end_msg)
