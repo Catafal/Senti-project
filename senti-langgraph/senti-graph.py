@@ -26,6 +26,8 @@ llm = ChatGroq(model_name="llama-3.3-70b-versatile")
 # init cv_model for emotion detection
 cv_model = EmotionDetector()
 
+positive_emotions = ['happiness', 'neutral', 'surprise']
+
 def print_state(state_name: str):
     """Helper function to print current state in a consistent format"""
     print("\n" + "="*50)
@@ -119,7 +121,7 @@ def tool_router(tool_call):
 # Node
 def greeting(state: MessagesState):
     print_state("GREETING")
-    greeting_msg = "Hi, I'm Senti an emotional coach, how are you feeling today?"
+    greeting_msg = "Hi, I'm Senti an emotional coach, my goal is to transform negative emotions to a positive ones, how are you feeling today?"
     msg = AIMessage(content=greeting_msg)
     furhat.say(text=greeting_msg, blocking=True)
     furhat.gesture(name="BigSmile")
@@ -211,8 +213,8 @@ def assistant(state: MessagesState):
     comparison_result = compare_emotions(state, last_msg)
     if comparison_result:  # if there was a mismatch and we need clarification
         return comparison_result
-    
-    # 3. generate response using chain that includes tools
+
+    # 3. generate response using chain
     chain = llm_with_tools | inject_furhat | tool_router.map()
     llm_msg = chain.invoke(state["messages"])[0]
     furhat.say(text=llm_msg.content, blocking=True)
@@ -223,11 +225,29 @@ def assistant(state: MessagesState):
 # Node
 def farewell(state: MessagesState):
     print_state("FAREWELL")
+
+    last_msg = state["messages"][-1]
+    try:
+        detected_emotion = last_msg.content.split("Emotion: ")[1].strip().lower()
+        if detected_emotion in positive_emotions:
+            turn_on_lights.invoke({"color": "green", "furhat": furhat})
+            
+            positive_response = "I'm so glad you're feeling positive! Since you're in a good state, my mission is done, let's end our session here. Take care!"
+            furhat.say(text=positive_response, blocking=True)
+            furhat.gesture(name="BigSmile")
+            positive_ai_msg = AIMessage(content=positive_response)
+            positive_ai_msg.pretty_print()
+            
+    except Exception as e:
+        print(f"Error checking positive emotion: {e}")
+
+    
     goodbye_message = "Goodbye!"
     msg = AIMessage(content=goodbye_message)
     furhat.say(text=goodbye_message, blocking=True)
     furhat.gesture(name="Wink")
     msg.pretty_print()
+    turn_off_lights.invoke({"furhat": furhat})
     return {"messages": [msg]}
 
 # Node (music therapy exercise)
@@ -281,7 +301,16 @@ def end_exercise(state: MessagesState):
 # Controller for the control flow - continue, begin exercise, or end conversation
 def controller(state: MessagesState) -> Literal["assistant", "begin_breath_ex", "begin_music_ex", "farewell"]:
     usr_msg = state["messages"][-1]
-    if usr_msg.content.__contains__("bye"):
+    if usr_msg.type == "human":
+        try:
+            detected_emotion = usr_msg.content.split("Emotion: ")[1].strip().lower()
+            if detected_emotion in positive_emotions:
+                return "farewell"
+        except Exception as e:
+            print(f"Error checking emotion in controller: {e}")
+    if usr_msg.content.__contains__("bye") or (
+        state["messages"][-2].content == "I'm so glad you're feeling positive! Since you're in a good state, let's end our session here. Take care!"
+    ):
         return "farewell"
     elif usr_msg.content.__contains__("breathing exercise"):
         return "begin_breath_ex"
@@ -319,7 +348,9 @@ You are an empathic assistant who offers emotional advice for the user. The user
 You have various exercises that you can perform with the user to improve his/her mood.
 """
 messages = [SystemMessage(content=sys_text)]
-all_msgs = graph.invoke({"messages": messages}, config={"recursion_limit": 100})['messages']
-print("=========================================")
-for msg in all_msgs:
-    msg.pretty_print()
+# all_msgs = graph.invoke({"messages": messages}, config={"recursion_limit": 100})['messages']
+# print("=========================================")
+# for msg in all_msgs:
+#     msg.pretty_print()
+
+graph.invoke({"messages": messages}, config={"recursion_limit": 100})
