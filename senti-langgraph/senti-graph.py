@@ -11,6 +11,9 @@ from typing_extensions import Annotated
 from copy import deepcopy
 from EmotionUtils import EmotionDetector
 import time
+from PIL import Image
+import io
+
 
 # init furhat
 load_dotenv()
@@ -243,8 +246,19 @@ builder.add_edge("breathe_and_relax", "end_exercise")
 builder.add_edge("end_exercise", "get_user_prompt_and_emotion")
 builder.add_edge("farewell", END)
 
-# Add
+
+
+
+
 graph = builder.compile()
+
+
+# Save graph as png
+image_bytes = graph.get_graph().draw_mermaid_png()
+image_stream = io.BytesIO(image_bytes)
+image = Image.open(image_stream)
+image.save("./outputs/graph.png")
+
 sys_text = """
 You are an empathic assistant who offers emotional advice for the user. The user's detected emotion is stated at the bottom of his messages.
 You have various exercises that you can perform with the user to improve his/her mood.
