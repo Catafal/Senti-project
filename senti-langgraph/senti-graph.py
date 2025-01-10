@@ -171,7 +171,7 @@ def tool_router(tool_call):
 # Node
 def greeting(state: MessagesState):
     print_state("GREETING")
-    greeting_msg = "Hi, I'm Senti an emotional coach, my goal is to transform negative emotions to a positive ones, how are you feeling today?"
+    greeting_msg = "Hi, I'm Senti an emotional coach, my goal is to lift your mood by transform negative emotions to positive ones, how are you feeling today?"
     msg = AIMessage(content=greeting_msg)
     furhat.say(text=greeting_msg, blocking=True)
     furhat.gesture(name="BigSmile")
@@ -318,10 +318,17 @@ def begin_music_ex(state: MessagesState):
     intro_msg = "Let's try this music therapy exercise. Where we are going to close our eyes and listen to a calming music."
     furhat.say(text=intro_msg, blocking=True)
     messages.append(AIMessage(content=intro_msg))
+    msg = AIMessage(content=intro_msg)
+    furhat.gesture(name="Nod")
+    msg.pretty_print()
+    return {"messages": [msg]}
 
+# Node (music therapy exercise)
+def listen_to_music(state: MessagesState):
+    print_state("LISTEN TO MUSIC")
     print("playing music..")
     furhat.say(url="https://www2.cs.uic.edu/~i101/SoundFiles/PinkPanther30.wav", blocking=True)
-    msg = AIMessage(content=begin_msg + "\n\n**music plays**")
+    msg = AIMessage(content="**calming music plays**")
     furhat.gesture(name="Nod")
     msg.pretty_print()
     return {"messages": [msg]}
@@ -359,23 +366,25 @@ def breathe_and_relax(state: MessagesState):
     return {"messages": [inhale_msg, exhale_msg]}
 
 # Node (breathing exercise 2)
-def square_breathing(state: MessagesState):
-    print_state("SQUARE BREATHING")
-    
+def begin_square_breath_ex(state: MessagesState):
+    print_state("BEGIN SQUARE BREATHING")
+    messages = []
+    # Initial instruction
+    intro_msg = "Let's try square breathing. We'll breathe in, hold, exhale, and hold - each for 4 seconds."
+    furhat.say(text=intro_msg, blocking=True)
+    messages.append(AIMessage(content=intro_msg))
+    return {"messages": messages}
+
+# Node (breathing exercise 2)
+def perform_square_breathing(state: MessagesState):
+    print_state("PERFORM SQUARE BREATHING")
     instructions = [
         ("Breathe in slowly through your nose", 4),
         ("Hold your breath", 4),
         ("Exhale slowly through your mouth", 4),
         ("Hold your breath", 4)
     ]
-    
     messages = []
-    
-    # Initial instruction
-    intro_msg = "Let's try square breathing. We'll breathe in, hold, exhale, and hold - each for 4 seconds."
-    furhat.say(text=intro_msg, blocking=True)
-    messages.append(AIMessage(content=intro_msg))
-    
     # Perform the square breathing cycle
     for instruction, duration in instructions:
         furhat.say(text=instruction, blocking=True)
@@ -393,17 +402,15 @@ def square_breathing(state: MessagesState):
 # Node (end exercise)
 def end_exercise(state: MessagesState):
     print_state("END OF EXERCISE")
-
     question_msg = "How are you feeling after this exercise?"
     furhat.say(text=question_msg, blocking=True)
     msg = AIMessage(content=question_msg)
     msg.pretty_print()
     return {"messages": [msg]}
 
-# Controller for the control flow - continue, begin exercise, or end conversation
-def controller(state: MessagesState) -> Literal["assistant", "begin_breath_ex", "begin_music_ex", "farewell"]:
+# Controller for the control flow (after getting user prompt and emotion) - continue, begin exercise, or end conversation
+def controller(state: MessagesState) -> Literal["assistant", "begin_breath_ex", "begin_music_ex", "farewell", "begin_square_breath_ex"]:
     usr_msg = state["messages"][-1]
-    
     if usr_msg.type == "human":
         emotions_are_positive = compare_emotions(state,usr_msg, False)
         
@@ -436,7 +443,7 @@ def controller(state: MessagesState) -> Literal["assistant", "begin_breath_ex", 
             exercise_mapping = {
                 "breathing exercise": "begin_breath_ex",
                 "music exercise": "begin_music_ex",
-                "square breathing": "square_breathing"
+                "square breathing": "begin_square_breath_ex"
             }
             
             return exercise_mapping[selected_exercise]
@@ -459,7 +466,9 @@ builder.add_node("farewell", farewell)
 builder.add_node("begin_breath_ex", begin_breath_ex)
 builder.add_node("breathe_and_relax", breathe_and_relax)
 builder.add_node("begin_music_ex", begin_music_ex)
-builder.add_node("square_breathing", square_breathing)
+builder.add_node("listen_to_music", listen_to_music)
+builder.add_node("begin_square_breath_ex", begin_square_breath_ex)
+builder.add_node("perform_square_breathing", perform_square_breathing)
 builder.add_node("end_exercise", end_exercise)
 
 # Logic
@@ -467,16 +476,14 @@ builder.add_edge(START, "greeting")
 builder.add_edge("greeting", "get_user_prompt_and_emotion")
 builder.add_conditional_edges("get_user_prompt_and_emotion", controller)
 builder.add_edge("assistant", "get_user_prompt_and_emotion")
-builder.add_edge("begin_music_ex", "end_exercise")
+builder.add_edge("begin_music_ex", "listen_to_music")
+builder.add_edge("listen_to_music", "end_exercise")
 builder.add_edge("begin_breath_ex", "breathe_and_relax")
 builder.add_edge("breathe_and_relax", "end_exercise")
-builder.add_edge("square_breathing", "end_exercise")
+builder.add_edge("begin_square_breath_ex", "perform_square_breathing")
+builder.add_edge("perform_square_breathing", "end_exercise")
 builder.add_edge("end_exercise", "get_user_prompt_and_emotion")
 builder.add_edge("farewell", END)
-
-
-
-
 
 graph = builder.compile()
 
